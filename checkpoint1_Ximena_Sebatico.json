@@ -1,0 +1,271 @@
+{
+  "name": "Agendador de turnos - Consultorio",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "fa318c40-bee3-4fcf-9ac5-c6100fcb669a",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -432,
+        0
+      ],
+      "webhookId": "bf9bfa3b-666f-4e25-a608-08cf00b35584"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.chatInput }}",
+        "options": {
+          "systemMessage": "=ROL: Sos un asistente virtual de turnos médicos. Gestionás reservas mediante chat.\n\nOBJETIVO: Interpretar solicitudes en lenguaje natural, consultar disponibilidad, recopilar datos, reservar turnos y notificar al paciente y al doctor.\n\nÁMBITO: \nAtención: lunes a viernes, 09:00 a 18:00.\nDuración turnos: 45 minutos.\nZona horaria: Argentina/Buenos_Aires.DATOS DEL PACIENTE\n\nHERRAMIENTAS\nCalendar Consulta: revisar eventos y disponibilidad.\nCalendar Crear: registrar turnos aceptados.\nGmail: notificar al doctor únicamente después de una reserva exitosa al mail xsebatico@gmail.com.\n\nREGLAS\nLa información necesaria para un turno es: fecha, horario, nombre y apellido, DNI, fecha de nacimiento, teléfono, obra social y número de afiliado. Pedí solo los datos faltantes en un mismo mensaje todos juntos. No pedir otros datos. Nunca solicites email.\nNunca inventes disponibilidad ni confirmaciones.\nNo reserves sin datos completos.\nNo permitas superposiciones ni horarios fuera de atención.\nSi falla la reserva, no confirmes.\nSi falla Gmail, mantené la reserva y avisá al paciente del inconveniente.\nRespondé en castellano con claridad y amabilidad.\nNo repitas preguntas ni datos ya proporcionados. Sé breve y directo. \n\nFECHAS (muy importante)\nFecha y hora actual en Buenos Aires: {{ $now.setZone('America/Argentina/Buenos_Aires').toFormat(\"cccc dd/MM/yyyy HH:mm\") }}. Usá siempre esa fecha como referencia.\nSolo ofrecé turnos futuros y próximos; nunca fechas pasadas ni el día de hoy si el horario ya pasó.\nSi el paciente nombra un día de la semana (ej: viernes, lunes), interpretalo como la próxima ocurrencia de ese día a partir de mañana. Si hoy es ese mismo día de la semana, tomá el de la semana siguiente.\nAntes de consultar el calendario, calculá internamente la fecha exacta (dd/MM/yyyy) y el día de la semana. Nunca expliques ni muestres al paciente ese cálculo; solo indicá la fecha resultante. Si hay información pendiente, pedila en el mismo mensaje.\n\nPROCEDIMIENTO\n\nIdentificá fecha y horario solicitado. Verifica que sea una fecha futura próxima y que corresponda al calendario. \nSolicita los datos necesarios.\nConsultá Google Calendar y verificá disponibilidad. \nSi esta libre creá el evento de 45 minutos.\nSi se crea correctamente, confirmá al paciente y notificá al doctor por Gmail.\n\nALTERNATIVAS\n\nCuando el horario pedido esté ocupado, o cuando el paciente no indique horario, ofrecé siempre exactamente 2 alternativas de horario (nunca más de 2), verificadas en el calendario y de 45 minutos, del día pedido (o del siguiente día hábil si ese día no hay atención). Si hay menos de 2 disponibles, ofrecé solo las disponibles. Si no hay acuerdo, informá que el consultorio se comunicará con el paciente.\n\nRestricciones: No modifiques ni elimines eventos existentes. No compartas información privada de otros eventos. No generes reservas fuera del horario de trabajo",
+          "maxIterations": 5
+        }
+      },
+      "id": "d2b52a43-d1df-47f9-8c3c-fe6d6199673f",
+      "name": "AI Agent - Agendador",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -16,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-safeguard-20b",
+        "options": {}
+      },
+      "id": "6f8bc482-2781-4795-b50d-d3fc3621f45e",
+      "name": "Groq Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -424,
+        328
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "ScRwFlkDcG5G6so5",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Chat Trigger').item.json.sessionId }}",
+        "contextWindowLength": 3
+      },
+      "id": "4f23b27e-3b8c-4320-8a9b-00f859b905da",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -72,
+        232
+      ]
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": " Herramienta de solo rectura. Recupera los eventos del calendario dentro del intervalo solicitado con zona horaria America/Argentina/Buenos_Aires. Para revisar un día, consultá desde las 09:00 hasta las 18:00. Usá los eventos devueltos para comprobar cualquier superposición con el bloque de 45 minutos solicitado y para encontrar espacios libres. No asumas que un horario está libre si no verificaste el calendario.",
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "ffd7d2a294b9238d281e678b8fe771025a08981a686a7e46e9a6e5b38d73d5a5@group.calendar.google.com",
+          "mode": "list",
+          "cachedResultName": "Doctor"
+        },
+        "limit": 10,
+        "timeMin": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('timeMin', 'Inicio del rango de consulta en ISO 8601 con zona horaria de Buenos Aires', 'string') }}",
+        "timeMax": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('timeMax', 'Fin del rango de consulta en ISO 8601 con zona horaria de Buenos Aires', 'string') }}",
+        "options": {}
+      },
+      "id": "9a06fe74-75d8-4d5b-bc92-55d726ae4757",
+      "name": "Google Calendar - Consultar disponibilidad",
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        56,
+        232
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "cow8OkiouB7ihFFn",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "CREAR TURNO. Crea un evento en el calendario único del doctor. Solo llamar después de que el paciente haya elegido expresamente el horario y se hayan recopilado todos los datos obligatorios. El evento dura exactamente 45 minutos. summary debe tener el formato 'Consulta - Nombre Apellido'. description debe contener los datos completos del paciente. Nunca uses esta herramienta para una propuesta tentativa.",
+        "calendar": {
+          "__rl": true,
+          "value": "ffd7d2a294b9238d281e678b8fe771025a08981a686a7e46e9a6e5b38d73d5a5@group.calendar.google.com",
+          "mode": "list",
+          "cachedResultName": "Doctor"
+        },
+        "start": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('start', 'Fecha y hora de inicio en ISO 8601 con zona horaria America/Argentina/Buenos_Aires', 'string') }}",
+        "end": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('end', 'Fecha y hora de fin, exactamente 45 minutos después del inicio, en ISO 8601', 'string') }}",
+        "additionalFields": {
+          "description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('description', 'Datos del paciente: nombre y apellido, DNI, fecha de nacimiento, teléfono, obra social y número de afiliado', 'string') }}",
+          "summary": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('summary', 'Título: Consulta - Nombre y apellido', 'string') }}"
+        }
+      },
+      "id": "26d679dc-833a-4ab6-8923-07cab8477411",
+      "name": "Google Calendar - Crear turno",
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        184,
+        232
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "cow8OkiouB7ihFFn",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "ENVIAR AVISO AL DOCTOR. Enviá un email únicamente después de que Google Calendar haya devuelto éxito al crear el evento. Destinatario fijo: xsebatico@gmail.com. El correo debe informar que se agendó una nueva consulta e incluir fecha, hora, duración de 45 minutos y los datos proporcionados del paciente. No usar para turnos tentativos ni para operaciones fallidas.",
+        "sendTo": "xsebatico@gmail.com",
+        "subject": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Subject', 'Asunto del correo: Nuevo turno agendado - Nombre del paciente', 'string') }}",
+        "emailType": "text",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', 'Cuerpo del correo con fecha, hora, duración y datos del paciente', 'string') }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "e05c798c-058b-4386-b7e0-ce9aae8fa49d",
+      "name": "Gmail - Notificar al doctor",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.1,
+      "position": [
+        312,
+        232
+      ],
+      "webhookId": "5a63a6b6-7ae2-4440-9563-ae32bc1fdb20",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "HMdqN8qGPpuTQufQ",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.8-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        -200,
+        232
+      ],
+      "id": "3a02accf-7a07-43e6-bce8-56e7e9fd4ad4",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Agendador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        []
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent - Agendador",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar - Consultar disponibilidad": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent - Agendador",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar - Crear turno": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent - Agendador",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Notificar al doctor": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent - Agendador",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Agendador",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6765ced2-033f-4e78-a13e-09f71ff7a5e4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "449a302eb486d2e4c2381410a3d6f735717035694617bfc4c9672afbf9c145ff"
+  },
+  "nodeGroups": [],
+  "id": "EcNSkzpdrJke6N5G",
+  "tags": []
+}
